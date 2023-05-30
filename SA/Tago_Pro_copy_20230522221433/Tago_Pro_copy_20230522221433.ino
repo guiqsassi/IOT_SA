@@ -16,7 +16,7 @@
 const uint8_t scl = 32;
 const uint8_t sda = 33;
 
-const int buzzer = 34;
+const int buzzer = 26;
 
 const int ledBranco = 27;
 const int ledAmarelo = 14;
@@ -63,6 +63,9 @@ const uint8_t MPU6050_REGISTER_SIGNAL_PATH_RESET = 0x68;
 
 int16_t AccelX, AccelY, AccelZ, Temperature, GyroX, GyroY, GyroZ;
 
+int gap=1000;
+
+
 
 
 //configurações da conexão MQTT
@@ -94,7 +97,7 @@ void setup()
 
   pinMode(buzzer, OUTPUT);
 
-tone(buzzer, 1000);
+  
 
 }
 
@@ -169,7 +172,7 @@ void leitura_sinais()
  
   
   Read_RawValue(MPU6050SlaveAddress, MPU6050_REGISTER_ACCEL_XOUT_H);
-  delay(10000);
+  delay(1000);
  
 
   Ax = (double)AccelX/AccelScaleFactor;
@@ -261,6 +264,8 @@ void envia_msg()
   client.publish("node/acelerometro", json_giroZ);
 }
 
+
+
 //loop do programa
 void loop()
 {
@@ -317,13 +322,19 @@ void processa_msg(const String payload)
       digitalWrite(ledAmarelo, HIGH);
   }
  if(var == "buzzer"){
-     Serial.print("value:");
+   digitalWrite(buzzer, HIGH);
+    Serial.print("value:");
     String val = msg["value"];
     Serial.println(val);
-    int buzTone = val.toInt();
-   tone(buzzer, buzTone);
+     int buzTone = val.toInt();
+    tone(buzzer, buzTone); 
+    if(val == "activate"){
+    tone(buzzer, 100);
+    }
+  else{
+    digitalWrite(buzzer, LOW);
+  }
  }
- 
 }
 
 // This function is called once everything is connected (Wifi and MQTT)
@@ -335,3 +346,5 @@ void onConnectionEstablished()
    processa_msg(payload);
   });
 }
+
+
