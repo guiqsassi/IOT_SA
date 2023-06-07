@@ -13,8 +13,11 @@
 
 //pinos de entrada e saída
 
+Adafruit_MPU6050 mpu;
+
 const uint8_t scl = 32;
 const uint8_t sda = 33;
+
 
 const int buzzer = 26;
 
@@ -33,6 +36,8 @@ char json_giroZ[100];
 
 //variáveis internas
 const uint8_t MPU6050SlaveAddress = 0x68;
+
+
 
 const uint16_t AccelScaleFactor = 16384;
 
@@ -65,7 +70,7 @@ int16_t AccelX, AccelY, AccelZ, Temperature, GyroX, GyroY, GyroZ;
 
 int gap=1000;
 
-
+const int SAMPLING_FREQ = 100;
 
 
 //configurações da conexão MQTT
@@ -97,8 +102,85 @@ void setup()
 
   pinMode(buzzer, OUTPUT);
 
+  mpu.setAccelerometerRange(MPU6050_RANGE_2_G);
   
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
 
+
+}
+void zap1()
+{
+    for (float f=3000;f>40;f=f*0.93){
+    tone(buzzer,f);
+    delay(10);
+  }
+}
+
+void zap2()
+{
+    for (float f=3000;f>10;f=f*0.85){
+    tone(buzzer,2*f);
+    delay(5);
+    tone(buzzer,f);
+    delay(5); 
+  }
+}
+void risefall()
+{
+  float rise_fall_time=180;
+  int steps=50;
+  float f_max=2600;
+  float f_min=1000;
+  float delay_time=rise_fall_time/steps;
+  float step_size=(f_max-f_min)/steps;
+  for (float f =f_min;f<f_max;f+=step_size){
+    tone(buzzer,f);
+    delay(delay_time);
+  }
+   for (float f =f_max;f>f_min;f-=step_size){
+    tone(buzzer,f);
+    delay(delay_time);
+  }
+}
+void fall(float rise_fall_time)
+{
+  int steps=50;
+  float f_max=2000;
+  float f_min=500;
+  float delay_time=rise_fall_time/steps;
+  float step_size=0.97;
+  for (float f =f_max;f>f_min;f*=step_size){
+    tone(buzzer,f);
+    delay(delay_time);
+  }
+}
+void rise()
+{
+  float rise_fall_time=2000;
+  int steps=100;
+  float f_max=1500;
+  float f_min=500;
+  float delay_time=rise_fall_time/steps;
+  float step_size=1.012;
+  for (float f =f_min;f<f_max;f*=step_size){
+    tone(buzzer,f);
+    delay(delay_time);
+  }
+  noTone(buzzer);
+  delay(100);
+  
+}
+
+void twotone()
+{
+  float f_max=1500;
+  float f_min=1000;
+  float delay_time=800;
+  tone(buzzer,f_max);
+  delay(delay_time);
+  tone(buzzer,f_min);
+  delay(delay_time);
+  
 }
 
 void I2C_Write(uint8_t deviceAddress, uint8_t regAddress, uint8_t data){
@@ -151,7 +233,7 @@ void MPU6050_Init(){
 
   I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_CONFIG, 0x00);
 
-I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_GYRO_CONFIG, 0x00);//set +/-250 degree/second full scale
+  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_GYRO_CONFIG, 0x00);//set +/-250 degree/second full scale
 
   I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_ACCEL_CONFIG, 0x00);// set +/- 2g full scale
 
@@ -172,14 +254,13 @@ void leitura_sinais()
  
   
   Read_RawValue(MPU6050SlaveAddress, MPU6050_REGISTER_ACCEL_XOUT_H);
-  delay(1000);
  
 
-  Ax = (double)AccelX/AccelScaleFactor;
+  Ax = (double)AccelX/AccelScaleFactor * 9.81 * 1000;
 
-  Ay = (double)AccelY/AccelScaleFactor;
+  Ay = (double)AccelY/AccelScaleFactor * 9.81 * 1000;
 
-  Az = (double)AccelZ/AccelScaleFactor;
+  Az = (double)AccelZ/AccelScaleFactor * 9.81 * 1000;
 
   T = (double)Temperature/340+36.53;
 
@@ -189,6 +270,7 @@ void leitura_sinais()
 
   Gz = (double)GyroZ/GyroScaleFactor;
 
+  delay(1000 / SAMPLING_FREQ);
  
 
   Serial.print("Ax: "); Serial.print(Ax);
@@ -197,7 +279,7 @@ void leitura_sinais()
 
   Serial.print(" Az: "); Serial.print(Az);
 
-Serial.print(" T: "); Serial.print(T);
+  Serial.print(" T: "); Serial.print(T);
 
   Serial.print(" Gx: "); Serial.print(Gx);
 
@@ -206,6 +288,7 @@ Serial.print(" T: "); Serial.print(T);
   Serial.print(" Gz: "); Serial.println(Gz);
 
 }
+
 
 
 void converte_json()
@@ -236,7 +319,7 @@ void converte_json()
   serializeJson(sjson_acelZ, json_acelZ);
   
   sjson_temperatura["variable"] = "temperatura";
-  sjson_temperatura["value"] = Temperature;
+  sjson_temperatura["value"] = Temperature/340+36.53;
   serializeJson(sjson_temperatura, json_temperatura);
   
   sjson_giroX["variable"] = "giroX";
@@ -291,50 +374,77 @@ void processa_msg(const String payload)
   String var = msg["variable"];
   Serial.println(var);
   
-    if(var == "led_branco")
+  
+    if(var == "acely")
   {
     Serial.print("value:");
     String val = msg["value"];
     Serial.println(val);
-    if(val == "activate")
-      digitalWrite(ledBranco, LOW);
-    else
-      digitalWrite(ledBranco, HIGH);
-  }
-    if(var == "led_vermelho")
-  {
-    Serial.print("value:");
-    String val = msg["value"];
-    Serial.println(val);
-    if(val == "activate")
+    float valVib = val.toFloat();
+    Serial.println("valTemp");
+
+    if(valVib >= -400 || valVib <= 40){
+          digitalWrite(ledBranco, HIGH);
       digitalWrite(ledVermelho, LOW);
-    else
-      digitalWrite(ledVermelho, HIGH);
-  }
-    if(var == "led_amarelo")
-  {
-    Serial.print("value:");
-    String val = msg["value"];
-    Serial.println(val);
-    if(val == "activate")
-      digitalWrite(ledAmarelo, LOW);
-    else
       digitalWrite(ledAmarelo, HIGH);
-  }
- if(var == "buzzer"){
-   digitalWrite(buzzer, HIGH);
-    Serial.print("value:");
-    String val = msg["value"];
-    Serial.println(val);
-     int buzTone = val.toInt();
-    tone(buzzer, buzTone); 
-    if(val == "activate"){
-    tone(buzzer, 100);
     }
-  else{
-    digitalWrite(buzzer, LOW);
+    if(valVib >= 50){
+      digitalWrite(ledVermelho, HIGH);
+         digitalWrite(buzzer, HIGH);
+  //      for (int count=1;count<=10;count++)
+  // {
+  //   risefall();
+  // }
+  // noTone(buzzer);
+  // delay(gap);
+  // for (int count=1;count<=10;count++)
+  // {
+  //   fall(300);
+  // } 
+  // noTone(buzzer);
+  // delay(gap); 
+  // for (int count=1;count<=5;count++)
+  // {
+  //   fall(600);
+  // }
+  // noTone(buzzer);
+  // delay(gap); 
+  // for (int count=1;count<5;count++)
+  // {
+  //   rise();
+  // }
+  // noTone(buzzer);
+  // delay(gap); 
+  // for (int count=1;count<5;count++)
+  // {
+  //   twotone();
+  // }
+  // noTone(buzzer);
+  // delay(gap); 
+  // for (int count=1;count<10;count++)
+  // {
+  //   zap1();
+  // }
+  // noTone(buzzer);
+  // delay(gap); 
+  for (int count=1;count<10;count++)
+  {
+    zap2();
   }
- }
+  noTone(buzzer);
+  digitalWrite(ledBranco, LOW);
+  digitalWrite(ledAmarelo, LOW);
+  delay(gap);  
+            
+      } 
+
+    else{
+    digitalWrite(ledBranco, HIGH);
+    digitalWrite(ledVermelho, LOW);
+    digitalWrite(ledAmarelo, LOW);
+  }
+  }
+
 }
 
 // This function is called once everything is connected (Wifi and MQTT)
