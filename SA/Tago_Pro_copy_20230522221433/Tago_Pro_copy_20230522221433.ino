@@ -12,15 +12,16 @@
 
 
 //pinos de entrada e saída
-
 Adafruit_MPU6050 mpu;
 
+//declaração das variáveis do sensor mpu6050
 const uint8_t scl = 32;
 const uint8_t sda = 33;
 
-
+//declaração do buzzer
 const int buzzer = 26;
 
+//declaração dos leds
 const int ledBranco = 27;
 const int ledAmarelo = 14;
 const int ledVermelho = 12;
@@ -30,9 +31,9 @@ char json_acelX[100];
 char json_acelY[100];
 char json_acelZ[100];
 char json_temperatura[100];
-char json_giroX[100];
-char json_giroY[100];
-char json_giroZ[100];
+// char json_giroX[100];
+// char json_giroY[100];
+// char json_giroZ[100];
 
 //variáveis internas
 const uint8_t MPU6050SlaveAddress = 0x68;
@@ -68,6 +69,7 @@ const uint8_t MPU6050_REGISTER_SIGNAL_PATH_RESET = 0x68;
 
 int16_t AccelX, AccelY, AccelZ, Temperature, GyroX, GyroY, GyroZ;
 
+//gap para ter um intervalo entre os sons do buzzer
 int gap=1000;
 
 const int SAMPLING_FREQ = 100;
@@ -84,6 +86,19 @@ EspMQTTClient client
   "SafeVibration",     // Client name that uniquely identify your device
   1883              // The MQTT port, default to 1883. this line can be omitted
 );
+
+//conectar o ESP32 a internet
+void I2C_Write(uint8_t deviceAddress, uint8_t regAddress, uint8_t data){
+
+  Wire.beginTransmission(deviceAddress);
+
+  Wire.write(regAddress);
+
+  Wire.write(data);
+
+  Wire.endTransmission();
+
+}
 
 //configuração dos pinos
 void setup()
@@ -105,9 +120,120 @@ void setup()
   mpu.setAccelerometerRange(MPU6050_RANGE_2_G);
   
   mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+}
 
+//loop do programa
+void loop()
+{
+  leitura_sinais();
+  converte_json();
+  envia_msg();
+
+  delay(1000);
+
+  client.loop();
+}
+
+//inicializa o mpu6050, são protocolos de comunicação entre a ESP32 e o mpu6050
+void MPU6050_Init(){
+
+  delay(150);
+
+  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_SMPLRT_DIV, 0x07);
+
+  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_PWR_MGMT_1, 0x01);
+
+  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_PWR_MGMT_2, 0x00);
+
+  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_CONFIG, 0x00);
+
+  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_GYRO_CONFIG, 0x00);
+
+  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_ACCEL_CONFIG, 0x00);
+
+  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_FIFO_EN, 0x00);
+
+  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_INT_ENABLE, 0x01);
+
+  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_SIGNAL_PATH_RESET, 0x00);
+
+  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_USER_CTRL, 0x00);
 
 }
+
+//lendo os valores do mpu6050
+void Read_RawValue(uint8_t deviceAddress, uint8_t regAddress){
+
+  Wire.beginTransmission(deviceAddress);
+
+  Wire.write(regAddress);
+
+  Wire.endTransmission();
+
+  Wire.requestFrom(deviceAddress, (uint8_t)14);
+
+  AccelX = (((int16_t)Wire.read()<<8) | Wire.read());
+
+  AccelY = (((int16_t)Wire.read()<<8) | Wire.read());
+
+  AccelZ = (((int16_t)Wire.read()<<8) | Wire.read());
+
+  Temperature = (((int16_t)Wire.read()<<8) | Wire.read());
+
+  // GyroX = (((int16_t)Wire.read()<<8) | Wire.read());
+
+  // GyroY = (((int16_t)Wire.read()<<8) | Wire.read());
+
+  // GyroZ = (((int16_t)Wire.read()<<8) | Wire.read());
+
+}
+
+//tratando os dados do mpu6050 e mostrando eles no serial
+void leitura_sinais()
+{
+  double Ax, Ay, Az, T, Gx, Gy, Gz;
+
+ 
+  
+  Read_RawValue(MPU6050SlaveAddress, MPU6050_REGISTER_ACCEL_XOUT_H);
+ 
+
+  Ax =(double)AccelX/AccelScaleFactor  ;
+
+  Ay = (double)AccelY/AccelScaleFactor ;
+
+  Az = (double)AccelZ/AccelScaleFactor ;
+
+  T = (double)Temperature/340+36.53;
+
+  // Gx = (double)GyroX/GyroScaleFactor;
+
+  // Gy = (double)GyroY/GyroScaleFactor;
+
+  // Gz = (double)GyroZ/GyroScaleFactor;
+
+  delay(1000 / SAMPLING_FREQ);
+ 
+
+  Serial.print("Ax: "); Serial.print(Ax);
+
+  Serial.print(" Ay: "); Serial.print(Ay);
+
+  Serial.print(" Az: "); Serial.print(Az);
+
+  Serial.print(" T: "); Serial.println(T);
+
+  // Serial.print(" Gx: "); Serial.print(Gx);
+
+  // Serial.print(" Gy: "); Serial.print(Gy);
+
+  // Serial.print(" Gz: "); Serial.println(Gz);
+
+}
+
+// funções zap1, zap2, risefall, fall, rise, twotone, são referentes ao som do buzzer
+
+//--------------------------------------------------------------
 void zap1()
 {
     for (float f=3000;f>40;f=f*0.93){
@@ -182,185 +308,72 @@ void twotone()
   delay(delay_time);
   
 }
+//--------------------------------------------------------------
 
-void I2C_Write(uint8_t deviceAddress, uint8_t regAddress, uint8_t data){
-
-  Wire.beginTransmission(deviceAddress);
-
-  Wire.write(regAddress);
-
-  Wire.write(data);
-
-  Wire.endTransmission();
-
-}
-
-void Read_RawValue(uint8_t deviceAddress, uint8_t regAddress){
-
-  Wire.beginTransmission(deviceAddress);
-
-  Wire.write(regAddress);
-
-  Wire.endTransmission();
-
-  Wire.requestFrom(deviceAddress, (uint8_t)14);
-
-  AccelX = (((int16_t)Wire.read()<<8) | Wire.read());
-
-  AccelY = (((int16_t)Wire.read()<<8) | Wire.read());
-
-  AccelZ = (((int16_t)Wire.read()<<8) | Wire.read());
-
-  Temperature = (((int16_t)Wire.read()<<8) | Wire.read());
-
-  GyroX = (((int16_t)Wire.read()<<8) | Wire.read());
-
-  GyroY = (((int16_t)Wire.read()<<8) | Wire.read());
-
-  GyroZ = (((int16_t)Wire.read()<<8) | Wire.read());
-
-}
-
-void MPU6050_Init(){
-
-  delay(150);
-
-  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_SMPLRT_DIV, 0x07);
-
-  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_PWR_MGMT_1, 0x01);
-
-  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_PWR_MGMT_2, 0x00);
-
-  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_CONFIG, 0x00);
-
-  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_GYRO_CONFIG, 0x00);//set +/-250 degree/second full scale
-
-  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_ACCEL_CONFIG, 0x00);// set +/- 2g full scale
-
-  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_FIFO_EN, 0x00);
-
-  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_INT_ENABLE, 0x01);
-
-  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_SIGNAL_PATH_RESET, 0x00);
-
-  I2C_Write(MPU6050SlaveAddress, MPU6050_REGISTER_USER_CTRL, 0x00);
-
-}
-
-void leitura_sinais()
-{
-  double Ax, Ay, Az, T, Gx, Gy, Gz;
-
- 
-  
-  Read_RawValue(MPU6050SlaveAddress, MPU6050_REGISTER_ACCEL_XOUT_H);
- 
-
-  Ax = (double)AccelX/AccelScaleFactor * 9.81 * 1000;
-
-  Ay = (double)AccelY/AccelScaleFactor * 9.81 * 1000;
-
-  Az = (double)AccelZ/AccelScaleFactor * 9.81 * 1000;
-
-  T = (double)Temperature/340+36.53;
-
-  Gx = (double)GyroX/GyroScaleFactor;
-
-  Gy = (double)GyroY/GyroScaleFactor;
-
-  Gz = (double)GyroZ/GyroScaleFactor;
-
-  delay(1000 / SAMPLING_FREQ);
- 
-
-  Serial.print("Ax: "); Serial.print(Ax);
-
-  Serial.print(" Ay: "); Serial.print(Ay);
-
-  Serial.print(" Az: "); Serial.print(Az);
-
-  Serial.print(" T: "); Serial.print(T);
-
-  Serial.print(" Gx: "); Serial.print(Gx);
-
-  Serial.print(" Gy: "); Serial.print(Gy);
-
-  Serial.print(" Gz: "); Serial.println(Gz);
-
-}
-
-
-
+// converte os dados de leitura_sinais para JSON
 void converte_json()
 {
   StaticJsonDocument<300> sjson_acelX;
   StaticJsonDocument<300> sjson_acelY;
   StaticJsonDocument<300> sjson_acelZ;
   StaticJsonDocument<300> sjson_temperatura;
-  StaticJsonDocument<300> sjson_giroX;
-  StaticJsonDocument<300> sjson_giroY;
-  StaticJsonDocument<300> sjson_giroZ;
-
-  // sjson_acelerometro["variable"] = "acelerometro";
-  // sjson_acelerometro["value"] = AccelX, AccelY, AccelZ, Temperature, GyroX, GyroY, GyroZ;
-  // serializeJson(sjson_acelerometro, json_acelerometro);
+  // StaticJsonDocument<300> sjson_giroX;
+  // StaticJsonDocument<300> sjson_giroY;
+  // StaticJsonDocument<300> sjson_giroZ;
   
   sjson_acelX["variable"] = "acelX";
-  sjson_acelX["value"] = AccelX;
+  sjson_acelX["value"] = (double)AccelX/AccelScaleFactor;
   serializeJson(sjson_acelX, json_acelX);
   
   sjson_acelY["variable"] = "acelY";
-  sjson_acelY["value"] = AccelY;
+  sjson_acelY["value"] = (double)AccelY/AccelScaleFactor;
   serializeJson(sjson_acelY, json_acelY);
   
   
   sjson_acelZ["variable"] = "acelZ";
-  sjson_acelZ["value"] = AccelZ;
+  sjson_acelZ["value"] = (double)AccelZ/AccelScaleFactor;
   serializeJson(sjson_acelZ, json_acelZ);
   
   sjson_temperatura["variable"] = "temperatura";
   sjson_temperatura["value"] = Temperature/340+36.53;
   serializeJson(sjson_temperatura, json_temperatura);
   
-  sjson_giroX["variable"] = "giroX";
-  sjson_giroX["value"] = GyroX;
-  serializeJson(sjson_giroX, json_giroX);
+  // sjson_giroX["variable"] = "giroX";
+  // sjson_giroX["value"] = GyroX;
+  // serializeJson(sjson_giroX, json_giroX);
   
-  sjson_giroY["variable"] = "giroY";
-  sjson_giroY["value"] = GyroY;
-  serializeJson(sjson_giroY, json_giroY);
+  // sjson_giroY["variable"] = "giroY";
+  // sjson_giroY["value"] = GyroY;
+  // serializeJson(sjson_giroY, json_giroY);
   
-  sjson_giroZ["variable"] = "giroZ";
-  sjson_giroZ["value"] = GyroZ;
-  serializeJson(sjson_giroZ, json_giroZ);
+  // sjson_giroZ["variable"] = "giroZ";
+  // sjson_giroZ["value"] = GyroZ;
+  // serializeJson(sjson_giroZ, json_giroZ);
   
 }
 
+//enviando os dados JSON do mpu6050 para o TAGO.IO
 void envia_msg()
 {
-  client.publish("node/acelerometro", json_acelX); // You can activate the retain flag by setting the third parameter to true
+  client.publish("node/acelerometro", json_acelX);
   client.publish("node/acelerometro", json_acelY);
   client.publish("node/acelerometro", json_acelZ);
   client.publish("node/acelerometro", json_temperatura);
-  client.publish("node/acelerometro", json_giroX);
-  client.publish("node/acelerometro", json_giroY);
-  client.publish("node/acelerometro", json_giroZ);
+  // client.publish("node/acelerometro", json_giroX);
+  // client.publish("node/acelerometro", json_giroY);
+  // client.publish("node/acelerometro", json_giroZ);
 }
 
-
-
-//loop do programa
-void loop()
+//conexão do ESP32 com o tópico actuators do TAGO.IO
+void onConnectionEstablished()
 {
-  leitura_sinais();
-  converte_json();
-  envia_msg();
-
-  delay(1000);
-
-  client.loop();
+   client.subscribe("node/actuators", [] (const String &payload)  {
+   Serial.println(payload);
+   processa_msg(payload);
+  });
 }
 
+//traz os dados do TAGO.IO e faz as condições para ligar os leds e o buzzer
 void processa_msg(const String payload)
 {
   StaticJsonDocument<300> msg;
@@ -379,18 +392,19 @@ void processa_msg(const String payload)
   {
     Serial.print("value:");
     String val = msg["value"];
-    Serial.println(val);
     float valVib = val.toFloat();
-    Serial.println("valTemp");
+    Serial.println(valVib);
 
     if(valVib >= -400 || valVib <= 40){
-          digitalWrite(ledBranco, HIGH);
+          digitalWrite(ledBranco, LOW);
       digitalWrite(ledVermelho, LOW);
       digitalWrite(ledAmarelo, HIGH);
     }
     if(valVib >= 50){
       digitalWrite(ledVermelho, HIGH);
          digitalWrite(buzzer, HIGH);
+         digitalWrite(ledAmarelo, LOW);
+         digitalWrite(ledBranco, LOW);
   //      for (int count=1;count<=10;count++)
   // {
   //   risefall();
@@ -447,14 +461,7 @@ void processa_msg(const String payload)
 
 }
 
-// This function is called once everything is connected (Wifi and MQTT)
-// WARNING : YOU MUST IMPLEMENT IT IF YOU USE EspMQTTClient
-void onConnectionEstablished()
-{
-   client.subscribe("node/actuators", [] (const String &payload)  {
-   Serial.println(payload);
-   processa_msg(payload);
-  });
-}
+
+
 
 
