@@ -151,15 +151,15 @@ void loop()
 {
 
   leitura_sinais();
+    
+    converte_json();
     envia_msg();
+    
+     delay(1000);
 if(ArrayEixoZ[9] != NULL){
   emiteAlerta();
 }
-  converte_json();
-
-
-  delay(1000);
-
+ 
   client.loop();
 }
 
@@ -479,7 +479,7 @@ void converte_json()
 }
 
 void emiteAlerta(){
-  if(zScoreX >= 2.8 || zScoreX < -2.8 || zScoreY >= 2.8 || zScoreY < -2.8 || zScoreZ >= 2.8 || zScoreZ < -2.8){
+  if(zScoreX >= 3 || zScoreX < -3 || zScoreY >= 3 || zScoreY < -3 || zScoreZ >= 3 || zScoreZ < -3){
        digitalWrite(ledVermelho, HIGH);
          digitalWrite(buzzer, HIGH);
          digitalWrite(ledAmarelo, LOW);
